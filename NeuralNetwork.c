@@ -87,12 +87,12 @@ void forward_propagation(NeuralNetwork *nn, double input[INPUT_SIZE]) {
     }
 }
 
-// Neuron i=0, input=[0.25, 0.286, 0.375]
-nn->z_hidden[0] = nn->bias_h[0];                   // Start with bias
-nn->z_hidden[0] += nn->weights_ih[0][0] * 0.25;    // Add rooms contribution
-nn->z_hidden[0] += nn->weights_ih[0][1] * 0.286;   // Add area contribution  
-nn->z_hidden[0] += nn->weights_ih[0][2] * 0.375;   // Add distance contribution
-nn->hidden[0] = relu(nn->z_hidden[0]);             // Apply ReLU
+// // Neuron i=0, input=[0.25, 0.286, 0.375]
+// nn->z_hidden[0] = nn->bias_h[0];                   // Start with bias
+// nn->z_hidden[0] += nn->weights_ih[0][0] * 0.25;    // Add rooms contribution
+// nn->z_hidden[0] += nn->weights_ih[0][1] * 0.286;   // Add area contribution  
+// nn->z_hidden[0] += nn->weights_ih[0][2] * 0.375;   // Add distance contribution
+// nn->hidden[0] = relu(nn->z_hidden[0]);             // Apply ReLU
 
 // Backpropagation
 void backward_propagation(NeuralNetwork *nn, double input[INPUT_SIZE], 
