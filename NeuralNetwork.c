@@ -1,272 +1,384 @@
-// Setup
+// engine.c
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <time.h>
 
-#define INPUT_SIZE 3
-#define HIDDEN_SIZE 4
-#define OUTPUT_SIZE 1
-#define LEARNING_RATE 0.0001
-#define EPOCHS 1000
+#define MAX_SAMPLES 30000
+#define MAX_LINE 2048
 
-// Neural Network Structure
+#define INPUT_SIZE 8
+#define OUTPUT_SIZE 1
+
+#define LEARNING_RATE 0.001
+#define EPOCHS 50
+#define BATCH_SIZE 32
+#define L2_LAMBDA 0.0001
+#define BETA1 0.9
+#define BETA2 0.999
+#define EPSILON 1e-8
+
+// ----------------------------
+// Layer Structure
+// ----------------------------
+
 typedef struct {
-    // Layer 1: Input to Hidden
-    double weights_ih[HIDDEN_SIZE][INPUT_SIZE];  // 4×3 matrix
-    double bias_h[HIDDEN_SIZE];                  // 4 biases
-    
-    // Layer 2: Hidden to Output
-    double weights_ho[OUTPUT_SIZE][HIDDEN_SIZE]; // 1×4 matrix
-    double bias_o[OUTPUT_SIZE];                  // 1 bias
-    
-    // Activations (saved for backprop)
-    double hidden[HIDDEN_SIZE];      // After ReLU
-    double output[OUTPUT_SIZE];      // Final output
-    
-    // Pre-activations (needed for gradients)
-    double z_hidden[HIDDEN_SIZE];    // Before ReLU
-    double z_output[OUTPUT_SIZE];    // Before output
+    int input_size;
+    int output_size;
+
+    double *weights;
+    double *bias;
+
+    double *z;
+    double *a;
+
+    double *m_w;
+    double *v_w;
+    double *m_b;
+    double *v_b;
+
+} Layer;
+
+// ----------------------------
+// Network Structure
+// ----------------------------
+
+typedef struct {
+    int num_layers;
+    Layer *layers;
 } NeuralNetwork;
 
-// Activation Functions
-// ReLU: max(0, x)
-double relu(double x) {
-    return (x > 0) ? x : 0;
+// ----------------------------
+// Utility
+// ----------------------------
+
+double relu(double x) { return x > 0 ? x : 0; }
+double relu_derivative(double x) { return x > 0 ? 1.0 : 0.0; }
+
+double random_uniform() {
+    return ((double)rand() / RAND_MAX) - 0.5;
 }
 
-// ReLU derivative: 1 if x>0, else 0
-double relu_derivative(double x) {
-    return (x > 0) ? 1.0 : 0.0;
+// ----------------------------
+// Layer Initialization (He Init)
+// ----------------------------
+
+void init_layer(Layer *layer, int in, int out) {
+    layer->input_size = in;
+    layer->output_size = out;
+
+    layer->weights = malloc(sizeof(double) * in * out);
+    layer->bias = calloc(out, sizeof(double));
+    layer->z = malloc(sizeof(double) * out);
+    layer->a = malloc(sizeof(double) * out);
+
+    layer->m_w = calloc(in * out, sizeof(double));
+    layer->v_w = calloc(in * out, sizeof(double));
+    layer->m_b = calloc(out, sizeof(double));
+    layer->v_b = calloc(out, sizeof(double));
+
+    double scale = sqrt(2.0 / in);
+
+    for (int i = 0; i < in * out; i++)
+        layer->weights[i] = random_uniform() * 2.0 * scale;
 }
 
-// Weight Initialization
-void init_network(NeuralNetwork *nn) {
-    srand(time(NULL));
-    
-    // Initialize input → hidden
-    for (int i = 0; i < HIDDEN_SIZE; i++) {
-        for (int j = 0; j < INPUT_SIZE; j++) {
-            // Random between -0.5 and 0.5
-            nn->weights_ih[i][j] = ((double)rand() / RAND_MAX) - 0.5;
-        }
-        nn->bias_h[i] = ((double)rand() / RAND_MAX) - 0.5;
-    }
-    
-    // Initialize hidden → output
-    for (int i = 0; i < OUTPUT_SIZE; i++) {
-        for (int j = 0; j < HIDDEN_SIZE; j++) {
-            nn->weights_ho[i][j] = ((double)rand() / RAND_MAX) - 0.5;
-        }
-        nn->bias_o[i] = ((double)rand() / RAND_MAX) - 0.5;
-    }
+// ----------------------------
+// Create Network
+// ----------------------------
+
+NeuralNetwork create_network(int *sizes, int num_layers) {
+    NeuralNetwork nn;
+    nn.num_layers = num_layers - 1;
+    nn.layers = malloc(sizeof(Layer) * nn.num_layers);
+
+    for (int i = 0; i < nn.num_layers; i++)
+        init_layer(&nn.layers[i], sizes[i], sizes[i + 1]);
+
+    return nn;
 }
 
-// Forward Propagation
-void forward_propagation(NeuralNetwork *nn, double input[INPUT_SIZE]) {
-    // LAYER 1: Input → Hidden
-    for (int i = 0; i < HIDDEN_SIZE; i++) {
-        // Weighted sum: z = w·x + b
-        nn->z_hidden[i] = nn->bias_h[i];
-        for (int j = 0; j < INPUT_SIZE; j++) {
-            nn->z_hidden[i] += nn->weights_ih[i][j] * input[j];
-        }
-        // Activation: a = ReLU(z)
-        nn->hidden[i] = relu(nn->z_hidden[i]);
-    }
-    
-    // LAYER 2: Hidden → Output
-    for (int i = 0; i < OUTPUT_SIZE; i++) {
-        // Weighted sum
-        nn->z_output[i] = nn->bias_o[i];
-        for (int j = 0; j < HIDDEN_SIZE; j++) {
-            nn->z_output[i] += nn->weights_ho[i][j] * nn->hidden[j];
-        }
-        // Linear activation (no function)
-        nn->output[i] = nn->z_output[i];
-    }
-}
+// ----------------------------
+// Forward Pass
+// ----------------------------
 
-// // Neuron i=0, input=[0.25, 0.286, 0.375]
-// nn->z_hidden[0] = nn->bias_h[0];                   // Start with bias
-// nn->z_hidden[0] += nn->weights_ih[0][0] * 0.25;    // Add rooms contribution
-// nn->z_hidden[0] += nn->weights_ih[0][1] * 0.286;   // Add area contribution  
-// nn->z_hidden[0] += nn->weights_ih[0][2] * 0.375;   // Add distance contribution
-// nn->hidden[0] = relu(nn->z_hidden[0]);             // Apply ReLU
+void forward(NeuralNetwork *nn, double *input) {
+    double *current_input = input;
 
-// Backpropagation
-void backward_propagation(NeuralNetwork *nn, double input[INPUT_SIZE], 
-                         double target[OUTPUT_SIZE]) {
-    
-    // STEP 1: Calculate output layer error
-    // For MSE: error = predicted - actual
-    double output_error[OUTPUT_SIZE];
-    for (int i = 0; i < OUTPUT_SIZE; i++) {
-        output_error[i] = nn->output[i] - target[i];
-    }
-    
-    // STEP 2: Backpropagate to hidden layer
-    // hidden_error = output_error × weight × ReLU'(z)
-    double hidden_error[HIDDEN_SIZE];
-    for (int i = 0; i < HIDDEN_SIZE; i++) {
-        hidden_error[i] = 0.0;
-        // Sum weighted errors from next layer
-        for (int j = 0; j < OUTPUT_SIZE; j++) {
-            hidden_error[i] += output_error[j] * nn->weights_ho[j][i];
+    for (int l = 0; l < nn->num_layers; l++) {
+        Layer *layer = &nn->layers[l];
+
+        for (int i = 0; i < layer->output_size; i++) {
+            double sum = layer->bias[i];
+
+            for (int j = 0; j < layer->input_size; j++) {
+                sum += layer->weights[i * layer->input_size + j] *
+                       current_input[j];
+            }
+
+            layer->z[i] = sum;
+
+            if (l == nn->num_layers - 1)
+                layer->a[i] = sum;
+            else
+                layer->a[i] = relu(sum);
         }
-        // Multiply by ReLU derivative
-        hidden_error[i] *= relu_derivative(nn->z_hidden[i]);
-    }
-    
-    // STEP 3: Update hidden → output weights
-    for (int i = 0; i < OUTPUT_SIZE; i++) {
-        for (int j = 0; j < HIDDEN_SIZE; j++) {
-            // gradient = error × previous_activation
-            nn->weights_ho[i][j] -= LEARNING_RATE * output_error[i] * nn->hidden[j];
-        }
-        nn->bias_o[i] -= LEARNING_RATE * output_error[i];
-    }
-    
-    // STEP 4: Update input → hidden weights
-    for (int i = 0; i < HIDDEN_SIZE; i++) {
-        for (int j = 0; j < INPUT_SIZE; j++) {
-            nn->weights_ih[i][j] -= LEARNING_RATE * hidden_error[i] * input[j];
-        }
-        nn->bias_h[i] -= LEARNING_RATE * hidden_error[i];
+
+        current_input = layer->a;
     }
 }
 
-// Data Normalization
-void normalize_data(double data[][INPUT_SIZE], int num_samples,
-                   double min[INPUT_SIZE], double max[INPUT_SIZE]) {
-    // Find min and max for each feature
+// ----------------------------
+// Adam Update
+// ----------------------------
+
+void adam_update(double *w, double *m, double *v,
+                 double grad, int index,
+                 int t) {
+
+    m[index] = BETA1 * m[index] + (1 - BETA1) * grad;
+    v[index] = BETA2 * v[index] + (1 - BETA2) * grad * grad;
+
+    double m_hat = m[index] / (1 - pow(BETA1, t));
+    double v_hat = v[index] / (1 - pow(BETA2, t));
+
+    w[index] -= LEARNING_RATE *
+                m_hat / (sqrt(v_hat) + EPSILON);
+}
+
+// ----------------------------
+// Backward Pass
+// ----------------------------
+
+void backward(NeuralNetwork *nn,
+              double *input,
+              double *target,
+              int timestep) {
+
+    int L = nn->num_layers;
+    double *delta = NULL;
+
+    for (int l = L - 1; l >= 0; l--) {
+
+        Layer *layer = &nn->layers[l];
+        double *new_delta = malloc(sizeof(double) * layer->output_size);
+
+        if (l == L - 1) {
+            for (int i = 0; i < layer->output_size; i++)
+                new_delta[i] = layer->a[i] - target[i];
+        } else {
+            Layer *next = &nn->layers[l + 1];
+
+            for (int i = 0; i < layer->output_size; i++) {
+                double sum = 0;
+                for (int j = 0; j < next->output_size; j++)
+                    sum += delta[j] *
+                           next->weights[j * next->input_size + i];
+
+                new_delta[i] =
+                    sum * relu_derivative(layer->z[i]);
+            }
+        }
+
+        double *prev_a = (l == 0) ? input
+                                  : nn->layers[l - 1].a;
+
+        for (int i = 0; i < layer->output_size; i++) {
+
+            for (int j = 0; j < layer->input_size; j++) {
+
+                int idx = i * layer->input_size + j;
+                double grad =
+                    new_delta[i] * prev_a[j] +
+                    L2_LAMBDA * layer->weights[idx];
+
+                adam_update(layer->weights,
+                            layer->m_w,
+                            layer->v_w,
+                            grad, idx, timestep);
+            }
+
+            adam_update(layer->bias,
+                        layer->m_b,
+                        layer->v_b,
+                        new_delta[i], i, timestep);
+        }
+
+        free(delta);
+        delta = new_delta;
+    }
+
+    free(delta);
+}
+
+// ----------------------------
+// CSV Loader
+// ----------------------------
+
+int load_csv(const char *filename,
+             double inputs[][INPUT_SIZE],
+             double targets[][OUTPUT_SIZE]) {
+
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Cannot open file\n");
+        exit(1);
+    }
+
+    char line[MAX_LINE];
+    fgets(line, sizeof(line), file);
+
+    int row = 0;
+
+    while (fgets(line, sizeof(line), file) &&
+           row < MAX_SAMPLES) {
+
+        char *token = strtok(line, ",");
+
+        for (int i = 0; i < INPUT_SIZE; i++) {
+            inputs[row][i] = atof(token);
+            token = strtok(NULL, ",");
+        }
+
+        targets[row][0] = atof(token);
+        row++;
+    }
+
+    fclose(file);
+    return row;
+}
+
+// ----------------------------
+// Normalize
+// ----------------------------
+
+void normalize(double data[][INPUT_SIZE],
+               int n,
+               double *min,
+               double *max) {
+
     for (int j = 0; j < INPUT_SIZE; j++) {
         min[j] = data[0][j];
         max[j] = data[0][j];
-        for (int i = 1; i < num_samples; i++) {
-            if (data[i][j] < min[j]) min[j] = data[i][j];
-            if (data[i][j] > max[j]) max[j] = data[i][j];
+
+        for (int i = 1; i < n; i++) {
+            if (data[i][j] < min[j])
+                min[j] = data[i][j];
+            if (data[i][j] > max[j])
+                max[j] = data[i][j];
         }
-    }
-    
-    // Normalize: (value - min) / (max - min)
-    for (int i = 0; i < num_samples; i++) {
-        for (int j = 0; j < INPUT_SIZE; j++) {
-            data[i][j] = (data[i][j] - min[j]) / (max[j] - min[j]);
-        }
+
+        for (int i = 0; i < n; i++)
+            data[i][j] =
+                (data[i][j] - min[j]) /
+                (max[j] - min[j] + 1e-9);
     }
 }
 
-// Training Function
-void train(NeuralNetwork *nn, double inputs[][INPUT_SIZE],
-          double targets[][OUTPUT_SIZE], int num_samples) {
-    
-    for (int epoch = 0; epoch < EPOCHS; epoch++) {
-        double total_loss = 0.0;
-        
-        // Train on each example
-        for (int i = 0; i < num_samples; i++) {
-            // Forward pass: make prediction
-            forward_propagation(nn, inputs[i]);
-            
-            // Calculate loss (MSE)
-            for (int j = 0; j < OUTPUT_SIZE; j++) {
-                double error = nn->output[j] - targets[i][j];
-                total_loss += error * error;
-            }
-            
-            // Backward pass: update weights
-            backward_propagation(nn, inputs[i], targets[i]);
-        }
-        
-        // Average loss over all samples
-        total_loss /= num_samples;
-        
-        // Print progress
-        if (epoch % 100 == 0) {
-            printf("Epoch %d, Loss: %.4f\n", epoch, total_loss);
-        }
+// ----------------------------
+// Save / Load Model
+// ----------------------------
+
+void save_model(NeuralNetwork *nn, const char *file) {
+    FILE *f = fopen(file, "wb");
+
+    fwrite(&nn->num_layers, sizeof(int), 1, f);
+
+    for (int l = 0; l < nn->num_layers; l++) {
+        Layer *layer = &nn->layers[l];
+
+        fwrite(&layer->input_size, sizeof(int), 1, f);
+        fwrite(&layer->output_size, sizeof(int), 1, f);
+
+        fwrite(layer->weights,
+               sizeof(double),
+               layer->input_size * layer->output_size, f);
+
+        fwrite(layer->bias,
+               sizeof(double),
+               layer->output_size, f);
     }
+
+    fclose(f);
 }
 
-// Main Function
+void load_model(NeuralNetwork *nn, const char *file) {
+    FILE *f = fopen(file, "rb");
+
+    int layers;
+    fread(&layers, sizeof(int), 1, f);
+
+    for (int l = 0; l < layers; l++) {
+        Layer *layer = &nn->layers[l];
+
+        fread(layer->weights,
+              sizeof(double),
+              layer->input_size * layer->output_size, f);
+
+        fread(layer->bias,
+              sizeof(double),
+              layer->output_size, f);
+    }
+
+    fclose(f);
+}
+
+// ----------------------------
+// MAIN
+// ----------------------------
+
 int main() {
-    // Dataset: rooms, area_sqft, distance_km
-    double training_inputs[][INPUT_SIZE] = {
-        {3, 1500, 2.0},
-        {4, 2000, 1.5},
-        {2, 1000, 3.0},
-        {5, 2500, 1.0},
-        {3, 1800, 2.5},
-        {4, 2200, 1.2},
-        {2, 900, 4.0},
-        {6, 3000, 0.8}
-    };
-    
-    // Prices in $1000s
-    double training_targets[][OUTPUT_SIZE] = {
-        {300}, {400}, {200}, {500},
-        {350}, {450}, {180}, {600}
-    };
-    
-    int num_samples = 8;
-    
-    // Step 1: Normalize inputs
+
+    srand(time(NULL));
+
+    static double inputs[MAX_SAMPLES][INPUT_SIZE];
+    static double targets[MAX_SAMPLES][OUTPUT_SIZE];
+
+    int n = load_csv("housing.csv",
+                     inputs, targets);
+
+    printf("Loaded %d samples\n", n);
+
     double min[INPUT_SIZE], max[INPUT_SIZE];
-    normalize_data(training_inputs, num_samples, min, max);
-    
-    // Step 2: Normalize targets
-    double target_min = training_targets[0][0];
-    double target_max = training_targets[0][0];
-    for (int i = 1; i < num_samples; i++) {
-        if (training_targets[i][0] < target_min) 
-            target_min = training_targets[i][0];
-        if (training_targets[i][0] > target_max) 
-            target_max = training_targets[i][0];
+    normalize(inputs, n, min, max);
+
+    int train_size = n * 0.8;
+
+    int sizes[] = {INPUT_SIZE, 32, 16, 8, 1};
+    NeuralNetwork nn =
+        create_network(sizes, 5);
+
+    int timestep = 1;
+
+    for (int epoch = 0; epoch < EPOCHS; epoch++) {
+
+        double loss = 0;
+
+        for (int i = 0; i < train_size; i++) {
+
+            forward(&nn, inputs[i]);
+
+            double error =
+                nn.layers[nn.num_layers - 1].a[0]
+                - targets[i][0];
+
+            loss += error * error;
+
+            backward(&nn,
+                     inputs[i],
+                     targets[i],
+                     timestep++);
+
+        }
+
+        printf("Epoch %d | Loss: %.6f\n",
+               epoch, loss / train_size);
     }
-    for (int i = 0; i < num_samples; i++) {
-        training_targets[i][0] = 
-            (training_targets[i][0] - target_min) / (target_max - target_min);
-    }
-    
-    // Step 3: Create and initialize network
-    NeuralNetwork nn;
-    init_network(&nn);
-    
-    printf("Training Neural Network...\n");
-    printf("Architecture: %d → %d → %d\n\n", 
-           INPUT_SIZE, HIDDEN_SIZE, OUTPUT_SIZE);
-    
-    // Step 4: Train
-    train(&nn, training_inputs, training_targets, num_samples);
-    
-    // Step 5: Test predictions
-    printf("\n=== Predictions ===\n");
-    for (int i = 0; i < num_samples; i++) {
-        forward_propagation(&nn, training_inputs[i]);
-        
-        // Denormalize: value_original = value_norm × (max-min) + min
-        double predicted = nn.output[0] * (target_max - target_min) + target_min;
-        double actual = training_targets[i][0] * (target_max - target_min) + target_min;
-        
-        printf("Sample %d: Predicted $%.2fk, Actual $%.2fk\n",
-               i+1, predicted, actual);
-    }
-    
-    // Step 6: Predict new house
-    printf("\n=== New Prediction ===\n");
-    double new_house[INPUT_SIZE] = {3, 1600, 1.8};
-    
-    // Normalize using training data's min/max
-    for (int j = 0; j < INPUT_SIZE; j++) {
-        new_house[j] = (new_house[j] - min[j]) / (max[j] - min[j]);
-    }
-    
-    forward_propagation(&nn, new_house);
-    double prediction = nn.output[0] * (target_max - target_min) + target_min;
-    
-    printf("House: 3 rooms, 1600 sqft, 1.8km\n");
-    printf("Predicted: $%.2fk\n", prediction);
-    
+
+    save_model(&nn, "model.bin");
+
+    printf("Model saved.\n");
+
     return 0;
 }
