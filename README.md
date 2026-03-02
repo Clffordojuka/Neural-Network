@@ -172,9 +172,12 @@ For each epoch:
 ## 📊 Example Output
 
 ```
-Epoch 0 | Loss: 13679838134.589468
-Epoch 1 | Loss: 10646073415.988472
-Epoch 2 | Loss: 10411599101.063282
+Epoch 0 | Loss 53064987131.776009
+Epoch 1 | Loss 47549253482.912666
+Epoch 2 | Loss 28196656985.694962
+Epoch 3 | Loss 14598957015.256060
+Epoch 4 | Loss 13277542323.550255
+Epoch 5 | Loss 13212601290.228926
 ```
 
 ---
