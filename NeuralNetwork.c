@@ -1,4 +1,4 @@
-// tiny_nn.c
+// NeuralNetwork.c
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

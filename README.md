@@ -1,32 +1,36 @@
-# 🧠 Neural Network from Scratch in C
+# 🧠 Mini Deep Learning Training Engine in C
 
-**Training on California Housing Dataset (`housing.csv`)**
-
----
-
-## 📌 Project Overview
-
-This project implements a fully connected feedforward neural network **from scratch in C** without using any external machine learning libraries.
-
-The model is trained on the **California Housing dataset** to predict median house values using structured tabular data.
-
-The purpose of this project is to:
-
-* Understand neural networks at a low level
-* Implement forward and backward propagation manually
-* Build a real training engine in pure C
-* Train on a real-world dataset (~20,000 samples)
-* Apply core ML engineering practices (normalization, shuffling, validation, regularization)
-
-This is not a toy implementation — it trains on real data and supports proper evaluation.
+**Training on the California Housing Dataset (`housing.csv`)**
 
 ---
 
-## 📂 Dataset
+# 📌 Project Overview
+
+This project implements a **mini deep learning training engine written entirely in C** without relying on external machine learning libraries.
+
+The goal of this project is to **understand and implement neural networks at the systems level**, including forward propagation, backpropagation, optimization, and dataset management.
+
+Unlike many toy examples, this engine trains on a **real-world dataset (California Housing)** containing thousands of samples.
+
+The project demonstrates how modern deep learning systems work **under the hood**, including:
+
+* neural network architecture construction
+* gradient-based optimization
+* mini-batch training
+* data preprocessing and normalization
+* model persistence
+
+This implementation focuses on **clarity, correctness, and performance**, making it useful both as a learning resource and a systems-level ML engineering project.
+
+---
+
+# 📂 Dataset
 
 **File:** `housing.csv`
 
-Features (8 input variables):
+The dataset contains **California housing statistics** used to predict median house value.
+
+### Input Features (8)
 
 * longitude
 * latitude
@@ -37,139 +41,158 @@ Features (8 input variables):
 * households
 * median_income
 
-Target (1 output variable):
+### Target
 
 * median_house_value
 
-The model performs **regression** using Mean Squared Error (MSE) loss.
+The model performs **regression** using **Mean Squared Error (MSE)** loss.
+
+Dataset size: **~20,000 samples**
 
 ---
 
-## 🏗 Architecture
+# 🏗 Neural Network Architecture
 
-The neural network architecture:
+The engine supports **fully configurable multi-layer networks**.
+
+Example architecture used in this project:
 
 ```
 Input Layer (8 features)
         ↓
-Hidden Layer (16 neurons, ReLU activation)
+Hidden Layer (64 neurons, ReLU)
         ↓
-Output Layer (1 neuron, Linear activation)
+Hidden Layer (32 neurons, ReLU)
+        ↓
+Output Layer (1 neuron, Linear)
 ```
 
-### Configuration:
-
-* `INPUT_SIZE = 8`
-* `HIDDEN_SIZE = 16`
-* `OUTPUT_SIZE = 1`
+Layers can be easily modified inside the architecture configuration.
 
 ---
 
-## ⚙️ Features Implemented
+# ⚙️ Core Features Implemented
 
-### 1️⃣ CSV Dataset Loading
+## 1️⃣ Dynamic Layer Engine
 
-* Reads `housing.csv`
-* Skips header row
-* Parses input features and target
-* Supports up to 25,000 samples
+The network architecture is defined dynamically using a layer configuration array:
+
+```
+int layer_sizes[] = {8, 64, 32, 1};
+```
+
+This allows the model to support **arbitrary depth neural networks** without rewriting training logic.
 
 ---
 
-### 2️⃣ Data Preprocessing
+# 2️⃣ Adam Optimizer
 
-* Feature normalization (Min–Max scaling)
-* Train/Validation split (80% / 20%)
-* Dataset shuffling at every epoch
+The training engine implements the **Adam optimization algorithm**, one of the most widely used optimizers in deep learning.
 
-Normalization is computed using training data statistics to prevent data leakage.
+Adam combines:
+
+* Momentum
+* Adaptive learning rates
+
+Update rule:
+
+```
+m = β1 * m + (1 - β1) * g
+v = β2 * v + (1 - β2) * g²
+w = w - lr * m̂ / (sqrt(v̂) + ε)
+```
+
+This significantly improves training stability and convergence speed.
 
 ---
 
-### 3️⃣ Weight Initialization
+# 3️⃣ Mini-Batch Training
 
-He initialization is used for stability with ReLU:
+Training is performed using **mini-batches**, which improves:
 
-```
-scale = sqrt(2 / fan_in)
-```
+* gradient stability
+* convergence speed
+* numerical efficiency
 
-This improves convergence and prevents exploding/vanishing gradients.
+Each epoch:
 
----
-
-### 4️⃣ Forward Propagation
-
-Hidden layer:
-
-```
-z = W·x + b
-a = ReLU(z)
-```
-
-Output layer:
-
-```
-y = W·a + b
-```
+1. Dataset is shuffled
+2. Data is processed in batches
+3. Gradients are accumulated
+4. Parameters are updated
 
 ---
 
-### 5️⃣ Backpropagation
+# 4️⃣ Dataset Shuffling
 
-Manual gradient computation:
+Training samples are **randomly shuffled each epoch**.
 
-* Output error calculation
-* Hidden layer error propagation
-* Weight and bias updates
-* L2 regularization
+Benefits:
 
-Loss function:
-
-```
-MSE = (y_pred - y_true)^2
-```
+* Prevents model bias from sample ordering
+* Improves generalization
+* Stabilizes training
 
 ---
 
-### 6️⃣ Regularization
+# 5️⃣ Feature Normalization
 
-L2 regularization is applied during weight updates:
+Input features are normalized using **Min–Max scaling**:
 
 ```
-weight -= learning_rate * (gradient + λ * weight)
+x_norm = (x - min) / (max - min)
 ```
 
-This helps reduce overfitting on large datasets.
+This ensures features operate within the same range, which improves gradient descent performance.
 
 ---
 
-### 7️⃣ Validation Monitoring
+# 6️⃣ Model Saving & Loading
 
-After each epoch:
+The engine supports **model persistence**.
 
-* Training Loss is calculated
-* Validation Loss is calculated
-* Both are printed
+Trained weights can be saved to disk:
 
-This allows detection of overfitting.
+```
+model.bin
+```
+
+This allows:
+
+* reloading trained models
+* skipping retraining
+* deployment experiments
 
 ---
 
-## 🧪 Training Process
+# 7️⃣ Performance Optimizations
+
+Several optimizations were implemented:
+
+* efficient memory layout
+* preallocated gradient buffers
+* batch computation loops
+* reduced memory allocation overhead
+
+The implementation remains **fast while staying readable**.
+
+---
+
+# 🧪 Training Process
 
 For each epoch:
 
-1. Shuffle training data
-2. Perform forward pass
-3. Compute loss
-4. Backpropagate errors
-5. Update weights
-6. Evaluate validation loss
+1. Shuffle dataset
+2. Create mini-batches
+3. Perform forward propagation
+4. Compute loss
+5. Backpropagate gradients
+6. Update parameters using Adam
+7. Report training loss
 
 ---
 
-## 📊 Example Output
+# 📊 Example Training Output
 
 ```
 Epoch 0 | Loss 53064987131.776009
@@ -180,19 +203,23 @@ Epoch 4 | Loss 13277542323.550255
 Epoch 5 | Loss 13212601290.228926
 ```
 
+Loss steadily decreases as the model learns the dataset patterns.
+
 ---
 
-## 🛠 How to Compile
+# 🛠 How to Compile
+
+Compile using GCC:
 
 ```bash
-gcc NeuralNetwork.c -o nn -lm
+gcc NeuralNetwork.c -o nn -lm -fopenmp
 ```
 
 ---
 
-## ▶ How to Run
+# ▶ How to Run
 
-Make sure `housing.csv` is in the same directory:
+Place `housing.csv` in the project directory and run:
 
 ```bash
 ./nn
@@ -200,69 +227,62 @@ Make sure `housing.csv` is in the same directory:
 
 ---
 
-## 📁 Project Structure
+# 📁 Project Structure
 
 ```
 .
-├── neural_network.c
+├── NeuralNetwork.c
 ├── housing.csv
+├── model.bin
 └── README.md
 ```
 
 ---
 
-## 🎯 What This Project Demonstrates
+# 🎯 What This Project Demonstrates
 
-This project shows practical understanding of:
+This project highlights practical knowledge of:
 
-* Matrix operations in C
-* Manual gradient descent
-* ReLU activation
-* L2 regularization
-* Data normalization
-* Train/validation splitting
-* Real dataset training
-* Memory-efficient static arrays
-* Numerical stability in ML
-
----
-
-## 🚀 Next Improvements (Planned)
-
-The following upgrades are planned:
-
-* Fully dynamic layer engine (arbitrary depth)
-* Adam optimizer
-* Multi-layer deep network support
-* Model saving/loading
-* Performance optimization (OpenMP / optimized matrix ops)
-* Dynamic memory allocation (malloc-based architecture)
-* Batch training
+* neural networks from first principles
+* gradient descent and backpropagation
+* optimizer implementation (Adam)
+* dataset handling in C
+* numerical computation
+* mini-batch training
+* memory management in C
+* systems-level machine learning engineering
 
 ---
 
-## 👨‍💻 Why This Matters
+# 🚀 Project Milestone
 
-Most ML work today happens inside high-level libraries like:
+This project represents **Milestone 1** in a larger research direction:
 
-* PyTorch
-* TensorFlow
-* Scikit-learn
+**Building machine learning systems from scratch in low-level languages.**
 
-For this project I wanted it to work out mainly on low-level program.
-
-Understanding this level gives:
-
-* Deep intuition about gradient flow
-* Better debugging ability
-* Strong systems-level ML engineering skills
-* Performance awareness
+Future milestones will extend this work into a **modular ML framework**.
 
 ---
 
-## 📌 Author
+# 🔬 Future Work
 
-Clifford Odiwuor Ojuka
+Planned extensions include:
+
+* Modular ML framework architecture
+* Automatic differentiation (Autograd)
+* CUDA acceleration
+* SIMD vectorization
+* Softmax classification support
+* Dropout and regularization layers
+* Visualization tools for training metrics
+
+---
+
+# 👨‍💻 Author
+
+**Clifford Odiwuor Ojuka**
 Machine Learning & Systems Engineering Enthusiast
 
 ---
+
+💡 *This project was built to explore how modern deep learning systems operate internally rather than relying solely on high-level frameworks.*
